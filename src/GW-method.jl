@@ -26,3 +26,64 @@ end
 """
 @inline logAcceptance(logpr_new::Real, logpr_old::Real, nx::Int, z::Real) =
     min(0.0, (nx - 1) * log(z) + logpr_new - logpr_old)
+
+"""
+    MCMCSampler{Tc,Tp}(nx::Int, nw::Int, nt::Int) where {Tc<:Real,Tp<:Real}
+
+To construct
+
+    struct MCMCSampler{Tc,Tp}
+        chain::Array{Tc,3}
+        ρxsum::Array{Tc,3}
+        logpr::Array{Tp,2}
+    end
+
+- `nx` := dim. of hidden states `{Xₜ}`
+- `nw` := num. of walkers in the ensemble
+- `nt` := num. of observation epochs
+"""
+struct MCMCSampler{Tc,Tp}
+    chain::Array{Tc,3}
+    ρxsum::Array{Tc,3}
+    logpr::Array{Tp,2}
+
+    MCMCSampler{Tc,Tp}(nx::Int, nw::Int, nt::Int) where {Tc<:Real,Tp<:Real} =
+        new{Tc,Tp}(
+            Array{Tc,3}(undef, nx, nw, nt),
+            Array{Tc,3}(undef, nt,  4, nx),
+            Array{Tp,2}(undef, nt, nw)
+        )
+end
+
+"""
+    updateMCMC!(walkers_new::MatI, logprs_new::VecI,
+                walkers_old::MatI, logprs_old::VecI,
+                log_pdf::Function, nx::Int,
+                one2K::Base.OneTo{Int}, a::Real)
+"""
+function updateMCMC!(walkers_new::MatI, logprs_new::VecI,
+                     walkers_old::MatI, logprs_old::VecI,
+                     log_pdf::Function, nx::Int,
+                     one2K::Base.OneTo{Int}, a::Real)
+    for k in one2K
+        walker_new = view(walkers_new, :, k)
+        walker_old = view(walkers_old, :, k)
+
+        z = stretchMove!(
+            walker_new, walker_old,
+            view(walkers_old, :, sampling(one2K, k)), a
+        )
+
+        logpr_new = log_pdf(walker_new)
+        logpr_old = @inbounds logprs_old[k]
+        q = logAcceptance(logpr_new, logpr_old, nx, z)
+
+        if log(rand()) > q
+            copyto!(walker_new, walker_old)
+            @inbounds logprs_new[k] = logpr_old
+        else
+            @inbounds logprs_new[k] = logpr_new
+        end
+    end
+    return nothing
+end
