@@ -67,3 +67,29 @@ function sampling(iter::AbstractUnitRange{T}, exc::T) where T # type-stability �
     end
     return ret
 end
+
+autodot(x::VecI{Tx}, T::Int, τ::Int) where Tx<:Real = dot(view(x, 1:(T-τ)), view(x, (τ+1):T))
+
+"""
+    autocor!(cor::VecIO{Tr}, sig::VecI{Tx}, dev::VecB{Tx}) where {Tr<:Real, Tx<:Real}
+
+Compute a real-valued signal vector's autocorrelation function (ACF) in a nonnegative lag regime.
+The mean of signals would be subtracted from the signal vector before computing the ACF and stored in the provided buffer vector.
+The output is normalized by the variance of signals, i.e., the zero-lag autocorrelation is 1.
+"""
+function autocor!(cor::VecIO{Tr}, sig::VecI{Tx}, dev::VecB{Tx}) where {Tr<:Real, Tx<:Real}
+    size_sig = length(sig)
+    size_sig ≡ length(dev) || throw(DimensionMismatch())
+    size_sig ≡ length(cor) || throw(DimensionMismatch())
+
+    avg = mean(sig)
+    @simd for i in eachindex(dev)
+        @inbounds dev[i] = sig[i] - avg
+    end
+
+    var = dot(dev, dev)
+    @inbounds for i in eachindex(cor)
+        cor[i] = autodot(dev, size_sig, i - 1) / var
+    end
+    return cor
+end
