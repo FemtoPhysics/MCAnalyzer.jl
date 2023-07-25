@@ -56,6 +56,31 @@ struct MCMCSampler{Tc,Tp}
 end
 
 """
+    initialize!(s::MCMCSampler, avg::NTuple{N,A}, std::NTuple{N,S}, log_pdf::Function) where {N,A<:Real,S<:Real}
+"""
+function initialize!(s::MCMCSampler, avg::NTuple{N,A}, std::NTuple{N,S}, log_pdf::Function) where {N,A<:Real,S<:Real}
+    chain, logpr = s.chain, s.logpr
+    initNormal!(view(chain, :, :, 1), avg, std)
+    @inbounds for k in axes(logpr, 2)
+        logpr[1,k] = log_pdf(view(chain, :, k, 1))
+    end
+    return nothing
+end
+
+"""
+    initNormal!(des::MatI, avg::NTuple{N,A}, std::NTuple{N,S}) where {N,A<:Real,S<:Real}
+"""
+function initNormal!(des::MatI, avg::NTuple{N,A}, std::NTuple{N,S}) where {N,A<:Real,S<:Real}
+    N ≡ size(des, 1) || error("normal_init!: N ≠ size(des, 1)")
+    for k in axes(des, 2)
+        @simd for i in axes(des, 1)
+            @inbounds des[i,k] = avg[i] + randn() * std[i]
+        end
+    end
+    return nothing
+end
+
+"""
     updateMCMC!(walkers_new::MatI, logprs_new::VecI,
                 walkers_old::MatI, logprs_old::VecI,
                 log_pdf::Function, nx::Int,
